@@ -1,3 +1,8 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import FamilyMember
+
+
+@admin.register(FamilyMember)
+class FamilyMemberAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_admin")
