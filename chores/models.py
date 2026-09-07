@@ -10,6 +10,18 @@ class FamilyMember(models.Model):
         return self.name
 
 
+class ChoreQuerySet(models.QuerySet):
+    def active(self):
+        """Chores that have not been deactivated (#10).
+
+        Backing queryset for `Chore.objects.active()`. #11 (personal view)
+        and #12 (family view) are expected to build their "open chore"
+        filters on top of this once they land, per the breadcrumb comments
+        left on those issues - this only guarantees the `is_active` half.
+        """
+        return self.filter(is_active=True)
+
+
 class Chore(models.Model):
     class Priority(models.TextChoices):
         NORMAL = "normal", "Normal"
@@ -37,6 +49,8 @@ class Chore(models.Model):
         max_length=20, choices=Recurrence.choices, null=True, blank=True
     )
     is_active = models.BooleanField(default=True)
+
+    objects = ChoreQuerySet.as_manager()
 
     def __str__(self):
         return self.title

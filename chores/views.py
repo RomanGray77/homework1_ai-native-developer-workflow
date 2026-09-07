@@ -1,5 +1,6 @@
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
 from .forms import CreateChoreForm, EditChoreForm
@@ -23,6 +24,11 @@ POST_CREATE_REDIRECT_URL_NAME = "health"
 # points at "health" as a placeholder until #11/#12 land. Update this single
 # constant once one of those exists.
 POST_EDIT_REDIRECT_URL_NAME = "health"
+
+# Same forward-reference pattern as POST_EDIT_REDIRECT_URL_NAME above:
+# points at "health" as a placeholder until #11/#12 land. Update this single
+# constant once one of those exists.
+POST_DEACTIVATE_REDIRECT_URL_NAME = "health"
 
 
 def health(request):
@@ -119,3 +125,28 @@ def edit_chore(request, pk):
         )
 
     return render(request, "chores/edit_chore.html", {"form": form, "chore": chore})
+
+
+@admin_required
+@require_POST
+def deactivate_chore(request, pk):
+    """Let an admin deactivate (soft-delete) a chore (#10).
+
+    Gated by admin_required (#6), same as create_chore/edit_chore, and
+    POST-only: require_POST turns a GET into a 405 before admin_required's
+    session/role checks even matter for method, but admin_required still
+    runs first so a missing/non-admin session gets its usual redirect/403
+    treatment rather than a 405. The chore row is never deleted - only
+    is_active flips to False - so existing CompletionRecord history is left
+    completely untouched. A nonexistent pk is a 404 via get_object_or_404.
+    Deactivating an already-inactive chore is a no-op (no write, no error):
+    it still redirects like a normal success. There is no reactivate/undo
+    action - deliberately out of scope per plan.md's Final MVP Boundary.
+    """
+    chore = get_object_or_404(Chore, pk=pk)
+
+    if chore.is_active:
+        chore.is_active = False
+        chore.save(update_fields=["is_active"])
+
+    return redirect(POST_DEACTIVATE_REDIRECT_URL_NAME)
