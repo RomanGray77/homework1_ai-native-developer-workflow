@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Who are you?</title>
+</head>
+<body>
+    <h1>Who are you?</h1>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if members %}
+        <ul>
+            {% for member in members %}
+                <li>
+                    <form method="post" action="{% url 'select_member' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="family_member_id" value="{{ member.pk }}">
+                        <button type="submit">{{ member.name }}</button>
+                    </form>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No family members yet &mdash; ask an admin to add one in <a href="/admin/">/admin/</a>.</p>
+    {% endif %}
+</body>
+</html>
