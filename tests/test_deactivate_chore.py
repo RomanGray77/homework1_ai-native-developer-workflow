@@ -88,7 +88,7 @@ def test_admin_post_deactivates_chore_without_deleting_it(client):
     response = client.post(reverse("deactivate_chore", args=[chore.pk]))
 
     assert response.status_code == 302
-    assert response.url == reverse("health")
+    assert response.url == reverse("personal_chores")
     assert Chore.objects.filter(pk=chore.pk).exists()
     chore.refresh_from_db()
     assert chore.is_active is False
@@ -136,6 +136,6 @@ def test_deactivating_already_inactive_chore_is_a_noop(client):
     response = client.post(reverse("deactivate_chore", args=[chore.pk]))
 
     assert response.status_code == 302
-    assert response.url == reverse("health")
+    assert response.url == reverse("personal_chores")
     chore.refresh_from_db()
     assert chore.is_active is False

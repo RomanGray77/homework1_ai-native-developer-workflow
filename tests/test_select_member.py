@@ -65,6 +65,21 @@ def test_post_valid_member_sets_session_and_redirects(client):
 
 
 @pytest.mark.django_db
+def test_post_valid_member_redirects_to_personal_chores(client):
+    # #11's POST_SELECT_REDIRECT_URL_NAME follow-through: a successful
+    # selection now lands on the personal chore view, not the "health"
+    # placeholder used before #11 existed.
+    member = FamilyMember.objects.create(name="Alice", is_admin=True)
+
+    response = client.post(
+        reverse("select_member"), {"family_member_id": member.pk}
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse("personal_chores")
+
+
+@pytest.mark.django_db
 def test_post_invalid_member_id_rerenders_with_error_not_crash(client):
     FamilyMember.objects.create(name="Alice", is_admin=True)
 

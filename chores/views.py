@@ -1,34 +1,31 @@
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
 from .forms import CreateChoreForm, EditChoreForm
 from .models import Chore, FamilyMember
 
-# The personal chore view (#11) is what a selection should redirect to, but
-# #11 has not been implemented yet. Redirecting to a URL name that does not
-# exist would turn every successful selection into a 500/NoReverseMatch, so
-# this points at "health" as a placeholder in the meantime. Update this once
-# #11 lands (see the issue #7 comment for the same note).
-POST_SELECT_REDIRECT_URL_NAME = "health"
+# The personal chore view (#11) now exists, so a successful selection lands
+# there instead of on the "health" placeholder used before #11 shipped.
+POST_SELECT_REDIRECT_URL_NAME = "personal_chores"
 
 # Same forward-reference pattern as POST_SELECT_REDIRECT_URL_NAME above:
 # the family overview (#12) is where a successfully created chore should
-# send the admin, but neither #11 nor #12 exist yet. Points at "health" as a
+# send the admin, but #12 does not exist yet. Points at "health" as a
 # placeholder so this doesn't 500/NoReverseMatch in the meantime; update
 # this single constant once #12 lands.
 POST_CREATE_REDIRECT_URL_NAME = "health"
 
 # Same forward-reference pattern as POST_CREATE_REDIRECT_URL_NAME above:
-# points at "health" as a placeholder until #11/#12 land. Update this single
-# constant once one of those exists.
+# points at "health" as a placeholder until #12 lands. Update this single
+# constant once it exists.
 POST_EDIT_REDIRECT_URL_NAME = "health"
 
-# Same forward-reference pattern as POST_EDIT_REDIRECT_URL_NAME above:
-# points at "health" as a placeholder until #11/#12 land. Update this single
-# constant once one of those exists.
-POST_DEACTIVATE_REDIRECT_URL_NAME = "health"
+# The personal chore view (#11) now exists, so deactivating a chore redirects
+# there instead of the "health" placeholder used before #11 shipped.
+POST_DEACTIVATE_REDIRECT_URL_NAME = "personal_chores"
 
 
 def health(request):
@@ -150,3 +147,82 @@ def deactivate_chore(request, pk):
         chore.save(update_fields=["is_active"])
 
     return redirect(POST_DEACTIVATE_REDIRECT_URL_NAME)
+
+
+def personal_chores(request):
+    """Show the selected family member their own open chores (#11).
+
+    No admin_required gate - any selected family member (admin or not) may
+    view their own chores. The session check mirrors admin_required's
+    pattern (chores/decorators.py): missing, malformed (non-numeric), or
+    stale (no matching FamilyMember) session values are all treated the same
+    - redirect to select_member, never a 500.
+
+    "Open" = Chore.objects.active() (#10, the is_active=True half, built on
+    top of that queryset method rather than re-derived) AND no
+    CompletionRecord yet. Results are grouped into four buckets compared
+    against today's date - Overdue, Today, Upcoming, and Later/No due date
+    (which also permanently holds every recurring chore, since due_date
+    never applies to chore_type=recurring) - each ordered by due_date
+    ascending (nulls last within Later/No due date, which is all nulls
+    anyway) then by title for a deterministic, testable order.
+    """
+    member_id = request.session.get(FAMILY_MEMBER_SESSION_KEY)
+
+    member = None
+    if member_id is not None:
+        try:
+            member = FamilyMember.objects.filter(pk=member_id).first()
+        except (ValueError, TypeError):
+            # Malformed session value (e.g. non-numeric) - treat as "no
+            # selection" rather than letting the lookup error out.
+            member = None
+
+    if member is None:
+        return redirect("select_member")
+
+    open_chores = (
+        Chore.objects.active()
+        .filter(owner=member)
+        .exclude(completion_records__isnull=False)
+        .order_by("title")
+    )
+
+    today = timezone.localdate()
+
+    overdue = []
+    due_today = []
+    upcoming = []
+    later_or_no_due_date = []
+
+    for chore in open_chores:
+        if chore.due_date is None:
+            later_or_no_due_date.append(chore)
+        elif chore.due_date < today:
+            overdue.append(chore)
+        elif chore.due_date == today:
+            due_today.append(chore)
+        else:
+            upcoming.append(chore)
+
+    # Chores with a due_date are already ordered by title (the queryset's
+    # order_by above); sort each dated bucket by due_date ascending while
+    # keeping title as the tiebreaker via a stable sort.
+    overdue.sort(key=lambda chore: chore.due_date)
+    due_today.sort(key=lambda chore: chore.due_date)
+    upcoming.sort(key=lambda chore: chore.due_date)
+
+    return render(
+        request,
+        "chores/personal_chores.html",
+        {
+            "member": member,
+            "overdue": overdue,
+            "due_today": due_today,
+            "upcoming": upcoming,
+            "later_or_no_due_date": later_or_no_due_date,
+            "has_open_chores": bool(
+                overdue or due_today or upcoming or later_or_no_due_date
+            ),
+        },
+    )

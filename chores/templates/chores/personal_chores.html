@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My chores</title>
+    <style>
+        .chore.important { font-weight: bold; }
+        .chore .priority-label { color: #b00; margin-left: 0.5em; }
+    </style>
+</head>
+<body>
+    <h1>{{ member.name }}'s chores</h1>
+
+    {% if not has_open_chores %}
+        <p>No open chores &mdash; you're all caught up!</p>
+    {% else %}
+        <section>
+            <h2>Overdue</h2>
+            {% if overdue %}
+                <ul>
+                    {% for chore in overdue %}
+                        <li class="chore{% if chore.priority == 'important' %} important{% endif %}">
+                            {{ chore.title }}
+                            {% if chore.priority == 'important' %}<span class="priority-label">Important</span>{% endif %}
+                            &mdash; due {{ chore.due_date }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Nothing overdue.</p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2>Today</h2>
+            {% if due_today %}
+                <ul>
+                    {% for chore in due_today %}
+                        <li class="chore{% if chore.priority == 'important' %} important{% endif %}">
+                            {{ chore.title }}
+                            {% if chore.priority == 'important' %}<span class="priority-label">Important</span>{% endif %}
+                            &mdash; due {{ chore.due_date }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Nothing due today.</p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2>Upcoming</h2>
+            {% if upcoming %}
+                <ul>
+                    {% for chore in upcoming %}
+                        <li class="chore{% if chore.priority == 'important' %} important{% endif %}">
+                            {{ chore.title }}
+                            {% if chore.priority == 'important' %}<span class="priority-label">Important</span>{% endif %}
+                            &mdash; due {{ chore.due_date }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Nothing upcoming.</p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2>Later / No due date</h2>
+            {% if later_or_no_due_date %}
+                <ul>
+                    {% for chore in later_or_no_due_date %}
+                        <li class="chore{% if chore.priority == 'important' %} important{% endif %}">
+                            {{ chore.title }}
+                            {% if chore.priority == 'important' %}<span class="priority-label">Important</span>{% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Nothing here.</p>
+            {% endif %}
+        </section>
+    {% endif %}
+</body>
+</html>
