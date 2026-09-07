@@ -69,3 +69,67 @@ class CreateChoreForm(forms.Form):
             due_date=self.cleaned_data.get("due_date"),
             recurrence=self.cleaned_data.get("recurrence") or None,
         )
+
+
+class EditChoreForm(forms.Form):
+    """Form backing the edit-chore view (#9).
+
+    Deliberately a separate form from `CreateChoreForm` rather than a reuse:
+    there is no `chore_type` field here at all, since #9 requires that the
+    one-time/recurring type can never be changed on edit (only via creating
+    a new chore in #8). The instance being edited is passed in via
+    `__init__` and its (unchangeable) `chore_type` is what the
+    mutual-exclusivity check in `clean()` keys off, instead of a submitted
+    value.
+    """
+
+    title = forms.CharField(max_length=200)
+    owner = forms.ModelChoiceField(queryset=FamilyMember.objects.none())
+    priority = forms.ChoiceField(
+        choices=Chore.Priority.choices,
+        required=False,
+        initial=Chore.Priority.NORMAL,
+    )
+    due_date = forms.DateField(required=False)
+    recurrence = forms.ChoiceField(
+        choices=Chore.Recurrence.choices, required=False
+    )
+
+    def __init__(self, *args, chore=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.chore = chore
+        # Populated per-instantiation (not as a class-level default) so newly
+        # created FamilyMember rows are picked up on every request.
+        self.fields["owner"].queryset = FamilyMember.objects.order_by("name")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        due_date = cleaned_data.get("due_date")
+        recurrence = cleaned_data.get("recurrence")
+
+        chore_type = self.chore.chore_type if self.chore else None
+
+        if chore_type == Chore.ChoreType.RECURRING:
+            if due_date:
+                self.add_error(
+                    "due_date",
+                    "Recurring chores don't use a due date (one-time only).",
+                )
+        elif chore_type == Chore.ChoreType.ONE_TIME:
+            if recurrence:
+                self.add_error(
+                    "recurrence",
+                    "One-time chores must not have a recurrence set.",
+                )
+
+        return cleaned_data
+
+    def save(self):
+        """Update and return the Chore. Only call after is_valid() passes."""
+        self.chore.title = self.cleaned_data["title"]
+        self.chore.owner = self.cleaned_data["owner"]
+        self.chore.priority = self.cleaned_data.get("priority") or Chore.Priority.NORMAL
+        self.chore.due_date = self.cleaned_data.get("due_date")
+        self.chore.recurrence = self.cleaned_data.get("recurrence") or None
+        self.chore.save()
+        return self.chore

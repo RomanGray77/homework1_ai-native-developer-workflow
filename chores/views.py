@@ -1,9 +1,9 @@
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
-from .forms import CreateChoreForm
-from .models import FamilyMember
+from .forms import CreateChoreForm, EditChoreForm
+from .models import Chore, FamilyMember
 
 # The personal chore view (#11) is what a selection should redirect to, but
 # #11 has not been implemented yet. Redirecting to a URL name that does not
@@ -18,6 +18,11 @@ POST_SELECT_REDIRECT_URL_NAME = "health"
 # placeholder so this doesn't 500/NoReverseMatch in the meantime; update
 # this single constant once #12 lands.
 POST_CREATE_REDIRECT_URL_NAME = "health"
+
+# Same forward-reference pattern as POST_CREATE_REDIRECT_URL_NAME above:
+# points at "health" as a placeholder until #11/#12 land. Update this single
+# constant once one of those exists.
+POST_EDIT_REDIRECT_URL_NAME = "health"
 
 
 def health(request):
@@ -80,3 +85,37 @@ def create_chore(request):
         form = CreateChoreForm()
 
     return render(request, "chores/create_chore.html", {"form": form})
+
+
+@admin_required
+def edit_chore(request, pk):
+    """Let an admin edit an existing chore's editable fields (#9).
+
+    Gated by admin_required (#6), same as create_chore. The chore's
+    chore_type is fixed at creation time (#8) and is never read from
+    submitted data - EditChoreForm has no chore_type field at all, and its
+    clean() enforces the due_date/recurrence mutual-exclusivity rule using
+    this chore's existing chore_type. A nonexistent pk is a 404 via
+    get_object_or_404, for both GET and POST. Editing never touches
+    CompletionRecord rows - only the Chore's own fields are updated.
+    """
+    chore = get_object_or_404(Chore, pk=pk)
+
+    if request.method == "POST":
+        form = EditChoreForm(request.POST, chore=chore)
+        if form.is_valid():
+            form.save()
+            return redirect(POST_EDIT_REDIRECT_URL_NAME)
+    else:
+        form = EditChoreForm(
+            chore=chore,
+            initial={
+                "title": chore.title,
+                "owner": chore.owner_id,
+                "priority": chore.priority,
+                "due_date": chore.due_date,
+                "recurrence": chore.recurrence,
+            },
+        )
+
+    return render(request, "chores/edit_chore.html", {"form": form, "chore": chore})
