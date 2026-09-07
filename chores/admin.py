@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Chore, FamilyMember
+from .models import Chore, CompletionRecord, FamilyMember
 
 
 @admin.register(FamilyMember)
@@ -19,3 +19,8 @@ class ChoreAdmin(admin.ModelAdmin):
         "recurrence",
         "is_active",
     )
+
+
+@admin.register(CompletionRecord)
+class CompletionRecordAdmin(admin.ModelAdmin):
+    list_display = ("chore", "completed_by", "completed_at")

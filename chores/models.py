@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class FamilyMember(models.Model):
@@ -39,3 +40,16 @@ class Chore(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class CompletionRecord(models.Model):
+    chore = models.ForeignKey(
+        Chore, on_delete=models.PROTECT, related_name="completion_records"
+    )
+    completed_by = models.ForeignKey(
+        FamilyMember, on_delete=models.PROTECT, related_name="completion_records"
+    )
+    completed_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.chore} completed by {self.completed_by} at {self.completed_at}"
