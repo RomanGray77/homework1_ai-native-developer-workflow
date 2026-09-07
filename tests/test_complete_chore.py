@@ -176,3 +176,151 @@ def test_completed_chore_drops_out_of_family_overview(client):
 
     overview_response = client.get(reverse("family_overview"))
     assert "Dishes" not in overview_response.content.decode()
+
+
+# --- #15: recurring chore next-occurrence generation ---
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "recurrence",
+    [Chore.Recurrence.DAILY, Chore.Recurrence.WEEKLY, Chore.Recurrence.MONTHLY],
+)
+def test_completing_recurring_chore_generates_one_next_occurrence(client, recurrence):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    chore = _make_chore(
+        owner,
+        title="Vacuum",
+        chore_type=Chore.ChoreType.RECURRING,
+        recurrence=recurrence,
+        priority=Chore.Priority.IMPORTANT,
+    )
+    _log_in_as(client, owner)
+
+    response = client.post(reverse("complete_chore", args=[chore.pk]))
+
+    assert response.status_code == 302
+    next_occurrences = Chore.objects.exclude(pk=chore.pk)
+    assert next_occurrences.count() == 1
+    next_chore = next_occurrences.get()
+    assert next_chore.title == chore.title
+    assert next_chore.owner_id == chore.owner_id
+    assert next_chore.priority == chore.priority
+    assert next_chore.chore_type == Chore.ChoreType.RECURRING
+    assert next_chore.recurrence == recurrence
+    assert next_chore.is_active is True
+
+
+@pytest.mark.django_db
+def test_generating_next_occurrence_does_not_touch_original_completion_record(client):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    chore = _make_chore(
+        owner,
+        title="Vacuum",
+        chore_type=Chore.ChoreType.RECURRING,
+        recurrence=Chore.Recurrence.DAILY,
+    )
+    _log_in_as(client, owner)
+
+    client.post(reverse("complete_chore", args=[chore.pk]))
+
+    assert CompletionRecord.objects.filter(chore=chore).count() == 1
+    next_chore = Chore.objects.exclude(pk=chore.pk).get()
+    assert not CompletionRecord.objects.filter(chore=next_chore).exists()
+
+
+@pytest.mark.django_db
+def test_completing_one_time_chore_generates_nothing(client):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    chore = _make_chore(owner, title="Dishes", chore_type=Chore.ChoreType.ONE_TIME)
+    _log_in_as(client, owner)
+
+    response = client.post(reverse("complete_chore", args=[chore.pk]))
+
+    assert response.status_code == 302
+    assert Chore.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_reposting_complete_on_already_completed_recurring_chore_generates_no_extra_rows(
+    client,
+):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    chore = _make_chore(
+        owner,
+        title="Vacuum",
+        chore_type=Chore.ChoreType.RECURRING,
+        recurrence=Chore.Recurrence.WEEKLY,
+    )
+    _log_in_as(client, owner)
+
+    first_response = client.post(reverse("complete_chore", args=[chore.pk]))
+    assert first_response.status_code == 302
+    assert Chore.objects.count() == 2
+
+    second_response = client.post(reverse("complete_chore", args=[chore.pk]))
+    assert second_response.status_code == 302
+    assert Chore.objects.count() == 2
+    assert CompletionRecord.objects.filter(chore=chore).count() == 1
+
+
+@pytest.mark.django_db
+def test_deactivating_completed_row_does_not_affect_generated_next_occurrence(client):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    admin = FamilyMember.objects.create(name="Pat", is_admin=True)
+    chore = _make_chore(
+        owner,
+        title="Vacuum",
+        chore_type=Chore.ChoreType.RECURRING,
+        recurrence=Chore.Recurrence.MONTHLY,
+    )
+    _log_in_as(client, owner)
+    client.post(reverse("complete_chore", args=[chore.pk]))
+    next_chore = Chore.objects.exclude(pk=chore.pk).get()
+
+    _log_in_as(client, admin)
+    deactivate_response = client.post(
+        reverse("deactivate_chore", args=[chore.pk])
+    )
+    assert deactivate_response.status_code == 302
+
+    next_chore.refresh_from_db()
+    assert next_chore.is_active is True
+    chore.refresh_from_db()
+    assert chore.is_active is False
+
+
+@pytest.mark.django_db
+def test_editing_generated_next_occurrence_does_not_touch_completed_row(client):
+    owner = FamilyMember.objects.create(name="Dana", is_admin=False)
+    admin = FamilyMember.objects.create(name="Pat", is_admin=True)
+    chore = _make_chore(
+        owner,
+        title="Vacuum",
+        chore_type=Chore.ChoreType.RECURRING,
+        recurrence=Chore.Recurrence.WEEKLY,
+    )
+    _log_in_as(client, owner)
+    client.post(reverse("complete_chore", args=[chore.pk]))
+    next_chore = Chore.objects.exclude(pk=chore.pk).get()
+    original_completion_record = CompletionRecord.objects.get(chore=chore)
+
+    _log_in_as(client, admin)
+    edit_response = client.post(
+        reverse("edit_chore", args=[next_chore.pk]),
+        {
+            "title": "Vacuum living room",
+            "owner": owner.pk,
+            "priority": Chore.Priority.IMPORTANT,
+            "recurrence": Chore.Recurrence.WEEKLY,
+        },
+    )
+    assert edit_response.status_code == 302
+
+    chore.refresh_from_db()
+    assert chore.title == "Vacuum"
+    assert chore.priority == Chore.Priority.NORMAL
+
+    unchanged_record = CompletionRecord.objects.get(chore=chore)
+    assert unchanged_record.pk == original_completion_record.pk
+    assert unchanged_record.completed_at == original_completion_record.completed_at

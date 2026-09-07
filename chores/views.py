@@ -173,6 +173,15 @@ def complete_chore(request, pk):
     no-op" behavior. Redirects to POST_COMPLETE_REDIRECT_URL_NAME
     (family_overview, not personal_chores) since a non-owner completing
     someone else's chore would never see it in their own personal view.
+
+    If this first (non-idempotent) completion is for a chore_type=recurring
+    chore, it also generates the next open occurrence (#15) via
+    _generate_next_occurrence - a brand-new Chore row, cloned from this one,
+    with no CompletionRecord of its own. The completed row and its
+    CompletionRecord are never mutated for this. One-time chores are
+    unaffected, and the idempotent no-op path below never triggers
+    generation, so re-POSTing against an already-completed recurring chore
+    creates no additional rows.
     """
     member_id = request.session.get(FAMILY_MEMBER_SESSION_KEY)
 
@@ -195,7 +204,31 @@ def complete_chore(request, pk):
             chore=chore, completed_by=member, completed_at=timezone.now()
         )
 
+        if chore.chore_type == Chore.ChoreType.RECURRING:
+            _generate_next_occurrence(chore)
+
     return redirect(POST_COMPLETE_REDIRECT_URL_NAME)
+
+
+def _generate_next_occurrence(chore):
+    """Create the next open occurrence of a just-completed recurring chore (#15).
+
+    Clones title/owner/priority/chore_type/recurrence onto a brand-new Chore
+    row with is_active=True and no CompletionRecord, leaving the completed
+    `chore` row (and its CompletionRecord history) completely untouched.
+    due_date is deliberately not copied/computed - it stays one-time-only
+    per _docs/architecture.md; `recurrence` alone documents cadence for the
+    MVP. Only called from complete_chore's first-completion branch, so it
+    never runs on the idempotent re-completion no-op.
+    """
+    return Chore.objects.create(
+        title=chore.title,
+        owner=chore.owner,
+        priority=chore.priority,
+        chore_type=chore.chore_type,
+        recurrence=chore.recurrence,
+        is_active=True,
+    )
 
 
 def _group_chores_by_due_date(chores):
