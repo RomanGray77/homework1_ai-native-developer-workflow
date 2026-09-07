@@ -1,7 +1,8 @@
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 
-from .decorators import FAMILY_MEMBER_SESSION_KEY
+from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
+from .forms import CreateChoreForm
 from .models import FamilyMember
 
 # The personal chore view (#11) is what a selection should redirect to, but
@@ -10,6 +11,13 @@ from .models import FamilyMember
 # this points at "health" as a placeholder in the meantime. Update this once
 # #11 lands (see the issue #7 comment for the same note).
 POST_SELECT_REDIRECT_URL_NAME = "health"
+
+# Same forward-reference pattern as POST_SELECT_REDIRECT_URL_NAME above:
+# the family overview (#12) is where a successfully created chore should
+# send the admin, but neither #11 nor #12 exist yet. Points at "health" as a
+# placeholder so this doesn't 500/NoReverseMatch in the meantime; update
+# this single constant once #12 lands.
+POST_CREATE_REDIRECT_URL_NAME = "health"
 
 
 def health(request):
@@ -51,3 +59,24 @@ def select_member(request):
         return redirect(POST_SELECT_REDIRECT_URL_NAME)
 
     return render(request, "chores/select_member.html", {"members": members})
+
+
+@admin_required
+def create_chore(request):
+    """Let an admin create a one-time or recurring chore (#8).
+
+    Gated by admin_required (#6): no session -> redirect to select_member,
+    non-admin session -> 403. On a valid POST the Chore is created (with
+    is_active=True by the model default and no CompletionRecord) and the
+    response redirects to POST_CREATE_REDIRECT_URL_NAME. An invalid POST
+    re-renders the same template with the bound form and its errors.
+    """
+    if request.method == "POST":
+        form = CreateChoreForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect(POST_CREATE_REDIRECT_URL_NAME)
+    else:
+        form = CreateChoreForm()
+
+    return render(request, "chores/create_chore.html", {"form": form})
