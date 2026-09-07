@@ -11,4 +11,5 @@ urlpatterns = [
     path("complete/<int:pk>/", views.complete_chore, name="complete_chore"),
     path("chores/", views.personal_chores, name="personal_chores"),
     path("family/", views.family_overview, name="family_overview"),
+    path("chores/completed/", views.completed_chores, name="completed_chores"),
 ]

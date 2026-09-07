@@ -333,3 +333,41 @@ def family_overview(request):
             ),
         },
     )
+
+
+def completed_chores(request):
+    """Show every completed chore, read-only (#14).
+
+    No session gate at all - same pattern as family_overview (#12), not
+    personal_chores'/select_member's redirect-if-no-session pattern: this
+    view renders identically whether family_member_id is absent, malformed,
+    stale, or a valid selection (admin or not). It never redirects to
+    select_member and never checks is_admin. It is also not a redirect
+    target for any POST action - the POST_*_REDIRECT_URL_NAME constants
+    above are all untouched by this view.
+
+    Every field shown (chore title, the chore's current owner, who
+    completed it, when) is direct FK access on CompletionRecord - no schema
+    or extra-query changes, per #14's acceptance criteria. "Current owner"
+    is a live FK read (record.chore.owner), so a chore reassigned after
+    completion shows its new owner here, not a point-in-time snapshot -
+    that snapshot behavior is explicitly out of scope for #14.
+
+    Ordered by completed_at descending (most recent first), with a
+    secondary sort by pk descending so two records sharing the same
+    completed_at still come out in a deterministic, testable order. This is
+    read-only: no edit/delete controls in the template (corrections are
+    #16).
+    """
+    records = CompletionRecord.objects.select_related(
+        "chore", "chore__owner", "completed_by"
+    ).order_by("-completed_at", "-pk")
+
+    return render(
+        request,
+        "chores/completed_chores.html",
+        {
+            "records": records,
+            "has_completed_chores": records.exists(),
+        },
+    )

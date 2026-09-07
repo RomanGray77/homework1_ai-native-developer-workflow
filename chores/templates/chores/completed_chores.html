@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Completed chores</title>
+    <style>
+        .record .owner-label { color: #555; font-style: italic; margin-left: 0.5em; }
+        .record .completed-by-label { color: #060; margin-left: 0.5em; }
+        .record .completed-at-label { color: #888; margin-left: 0.5em; }
+    </style>
+</head>
+<body>
+    <h1>Completed chores</h1>
+
+    {% if not has_completed_chores %}
+        <p>No chores have been completed yet.</p>
+    {% else %}
+        <ul>
+            {% for record in records %}
+                <li class="record">
+                    {{ record.chore.title }}
+                    <span class="owner-label">Owner: {{ record.chore.owner.name }}</span>
+                    <span class="completed-by-label">Completed by: {{ record.completed_by.name }}</span>
+                    <span class="completed-at-label">at {{ record.completed_at }}</span>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>
