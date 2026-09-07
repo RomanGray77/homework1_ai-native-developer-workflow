@@ -11,3 +11,4 @@ Rules
 Documents
 
 - `_docs/process.md` - how work is organized
+- Tasks are tracked as GitHub issues on this repo, not in a doc
