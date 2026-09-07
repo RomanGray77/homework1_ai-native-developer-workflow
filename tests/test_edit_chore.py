@@ -135,7 +135,9 @@ def test_valid_edit_updates_fields(client):
     )
 
     assert response.status_code == 302
-    assert response.url == reverse("health")
+    # POST_EDIT_REDIRECT_URL_NAME (#12) now points at family_overview,
+    # not the "health" placeholder used before #12 shipped.
+    assert response.url == reverse("family_overview")
     chore.refresh_from_db()
     assert chore.title == "Mow the back lawn"
     assert chore.owner == new_owner

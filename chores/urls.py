@@ -9,4 +9,5 @@ urlpatterns = [
     path("edit/<int:pk>/", views.edit_chore, name="edit_chore"),
     path("deactivate/<int:pk>/", views.deactivate_chore, name="deactivate_chore"),
     path("chores/", views.personal_chores, name="personal_chores"),
+    path("family/", views.family_overview, name="family_overview"),
 ]

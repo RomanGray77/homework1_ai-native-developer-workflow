@@ -11,17 +11,14 @@ from .models import Chore, FamilyMember
 # there instead of on the "health" placeholder used before #11 shipped.
 POST_SELECT_REDIRECT_URL_NAME = "personal_chores"
 
-# Same forward-reference pattern as POST_SELECT_REDIRECT_URL_NAME above:
-# the family overview (#12) is where a successfully created chore should
-# send the admin, but #12 does not exist yet. Points at "health" as a
-# placeholder so this doesn't 500/NoReverseMatch in the meantime; update
-# this single constant once #12 lands.
-POST_CREATE_REDIRECT_URL_NAME = "health"
+# The family overview (#12) now exists, so a successfully created chore
+# lands there instead of the "health" placeholder used before #12 shipped.
+POST_CREATE_REDIRECT_URL_NAME = "family_overview"
 
 # Same forward-reference pattern as POST_CREATE_REDIRECT_URL_NAME above:
-# points at "health" as a placeholder until #12 lands. Update this single
-# constant once it exists.
-POST_EDIT_REDIRECT_URL_NAME = "health"
+# the family overview (#12) now exists, so a successfully edited chore
+# lands there instead of the "health" placeholder used before #12 shipped.
+POST_EDIT_REDIRECT_URL_NAME = "family_overview"
 
 # The personal chore view (#11) now exists, so deactivating a chore redirects
 # there instead of the "health" placeholder used before #11 shipped.
@@ -149,6 +146,40 @@ def deactivate_chore(request, pk):
     return redirect(POST_DEACTIVATE_REDIRECT_URL_NAME)
 
 
+def _group_chores_by_due_date(chores):
+    """Group an iterable of open chores into the four #11/#12 buckets.
+
+    Shared by personal_chores (#11) and family_overview (#12) so the
+    grouping behavior stays identical between the two views (extraction is
+    optional per #12's constraints, but kept here since the logic is
+    otherwise a verbatim duplicate). `chores` must already be ordered by
+    title so buckets come out with title as a stable tiebreaker; each dated
+    bucket is then sorted by due_date ascending on top of that.
+    """
+    today = timezone.localdate()
+
+    overdue = []
+    due_today = []
+    upcoming = []
+    later_or_no_due_date = []
+
+    for chore in chores:
+        if chore.due_date is None:
+            later_or_no_due_date.append(chore)
+        elif chore.due_date < today:
+            overdue.append(chore)
+        elif chore.due_date == today:
+            due_today.append(chore)
+        else:
+            upcoming.append(chore)
+
+    overdue.sort(key=lambda chore: chore.due_date)
+    due_today.sort(key=lambda chore: chore.due_date)
+    upcoming.sort(key=lambda chore: chore.due_date)
+
+    return overdue, due_today, upcoming, later_or_no_due_date
+
+
 def personal_chores(request):
     """Show the selected family member their own open chores (#11).
 
@@ -188,35 +219,59 @@ def personal_chores(request):
         .order_by("title")
     )
 
-    today = timezone.localdate()
-
-    overdue = []
-    due_today = []
-    upcoming = []
-    later_or_no_due_date = []
-
-    for chore in open_chores:
-        if chore.due_date is None:
-            later_or_no_due_date.append(chore)
-        elif chore.due_date < today:
-            overdue.append(chore)
-        elif chore.due_date == today:
-            due_today.append(chore)
-        else:
-            upcoming.append(chore)
-
-    # Chores with a due_date are already ordered by title (the queryset's
-    # order_by above); sort each dated bucket by due_date ascending while
-    # keeping title as the tiebreaker via a stable sort.
-    overdue.sort(key=lambda chore: chore.due_date)
-    due_today.sort(key=lambda chore: chore.due_date)
-    upcoming.sort(key=lambda chore: chore.due_date)
+    overdue, due_today, upcoming, later_or_no_due_date = _group_chores_by_due_date(
+        open_chores
+    )
 
     return render(
         request,
         "chores/personal_chores.html",
         {
             "member": member,
+            "overdue": overdue,
+            "due_today": due_today,
+            "upcoming": upcoming,
+            "later_or_no_due_date": later_or_no_due_date,
+            "has_open_chores": bool(
+                overdue or due_today or upcoming or later_or_no_due_date
+            ),
+        },
+    )
+
+
+def family_overview(request):
+    """Show every open chore across the whole household (#12).
+
+    No session gate at all - unlike personal_chores (#11), this view is not
+    personalized to any one member, so it renders identically whether
+    `family_member_id` is absent, malformed, stale, or a valid selection
+    (admin or not). It never redirects to select_member and never checks
+    is_admin (plan.md story 8: "All family members can access the family
+    overview").
+
+    "Open" = Chore.objects.active() (#10, the is_active=True half, built on
+    top of that queryset method rather than re-derived) AND no
+    CompletionRecord yet - same definition as #11, but across every owner
+    rather than scoped to a session selection. Results are grouped into the
+    same four due_date buckets as #11 via the shared
+    _group_chores_by_due_date helper, each ordered by due_date ascending
+    (nulls last within Later/No due date) then by title.
+    """
+    open_chores = (
+        Chore.objects.active()
+        .exclude(completion_records__isnull=False)
+        .select_related("owner")
+        .order_by("title")
+    )
+
+    overdue, due_today, upcoming, later_or_no_due_date = _group_chores_by_due_date(
+        open_chores
+    )
+
+    return render(
+        request,
+        "chores/family_overview.html",
+        {
             "overdue": overdue,
             "due_today": due_today,
             "upcoming": upcoming,

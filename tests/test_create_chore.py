@@ -71,6 +71,9 @@ def test_admin_post_valid_one_time_chore_creates_it(client):
     )
 
     assert response.status_code == 302
+    # POST_CREATE_REDIRECT_URL_NAME (#12) now points at family_overview,
+    # not the "health" placeholder used before #12 shipped.
+    assert response.url == reverse("family_overview")
     chore = Chore.objects.get(title="Mow the lawn")
     assert chore.owner == owner
     assert chore.chore_type == Chore.ChoreType.ONE_TIME
@@ -99,6 +102,7 @@ def test_admin_post_valid_recurring_chore_creates_it(client):
     )
 
     assert response.status_code == 302
+    assert response.url == reverse("family_overview")
     chore = Chore.objects.get(title="Vacuum living room")
     assert chore.owner == owner
     assert chore.chore_type == Chore.ChoreType.RECURRING
