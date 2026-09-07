@@ -8,6 +8,7 @@ urlpatterns = [
     path("create/", views.create_chore, name="create_chore"),
     path("edit/<int:pk>/", views.edit_chore, name="edit_chore"),
     path("deactivate/<int:pk>/", views.deactivate_chore, name="deactivate_chore"),
+    path("complete/<int:pk>/", views.complete_chore, name="complete_chore"),
     path("chores/", views.personal_chores, name="personal_chores"),
     path("family/", views.family_overview, name="family_overview"),
 ]

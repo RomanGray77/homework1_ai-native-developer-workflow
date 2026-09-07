@@ -5,7 +5,7 @@ from django.views.decorators.http import require_POST
 
 from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
 from .forms import CreateChoreForm, EditChoreForm
-from .models import Chore, FamilyMember
+from .models import Chore, CompletionRecord, FamilyMember
 
 # The personal chore view (#11) now exists, so a successful selection lands
 # there instead of on the "health" placeholder used before #11 shipped.
@@ -23,6 +23,12 @@ POST_EDIT_REDIRECT_URL_NAME = "family_overview"
 # The personal chore view (#11) now exists, so deactivating a chore redirects
 # there instead of the "health" placeholder used before #11 shipped.
 POST_DEACTIVATE_REDIRECT_URL_NAME = "personal_chores"
+
+# Same forward-reference pattern as the constants above. Targets
+# family_overview specifically (not personal_chores): a non-owner who
+# completes someone else's chore would never see that chore in their own
+# personal view, so personal_chores would not visibly confirm anything (#13).
+POST_COMPLETE_REDIRECT_URL_NAME = "family_overview"
 
 
 def health(request):
@@ -144,6 +150,52 @@ def deactivate_chore(request, pk):
         chore.save(update_fields=["is_active"])
 
     return redirect(POST_DEACTIVATE_REDIRECT_URL_NAME)
+
+
+@require_POST
+def complete_chore(request, pk):
+    """Let any selected family member mark a chore as done (#13).
+
+    No admin_required gate - unlike create_chore/edit_chore/deactivate_chore,
+    completion is not admin-only: any valid selected member (admin or not)
+    may complete any chore, not just their own. The session check mirrors
+    personal_chores'/family_overview's inline pattern (not admin_required's,
+    since there is no admin/role check here): missing, malformed, or stale
+    family_member_id all redirect to select_member, never a 500. POST-only
+    via require_POST, same as deactivate_chore (GET -> 405). A nonexistent
+    pk is a 404 via get_object_or_404.
+
+    On success, records a CompletionRecord(chore=chore, completed_by=<the
+    selected member>, completed_at=timezone.now()) unless one already exists
+    for this chore - completing an already-completed chore (or a
+    double-submit race) is a no-op: no second record, no error, same
+    redirect as success. Mirrors deactivate_chore's "already inactive is a
+    no-op" behavior. Redirects to POST_COMPLETE_REDIRECT_URL_NAME
+    (family_overview, not personal_chores) since a non-owner completing
+    someone else's chore would never see it in their own personal view.
+    """
+    member_id = request.session.get(FAMILY_MEMBER_SESSION_KEY)
+
+    member = None
+    if member_id is not None:
+        try:
+            member = FamilyMember.objects.filter(pk=member_id).first()
+        except (ValueError, TypeError):
+            # Malformed session value (e.g. non-numeric) - treat as "no
+            # selection" rather than letting the lookup error out.
+            member = None
+
+    if member is None:
+        return redirect("select_member")
+
+    chore = get_object_or_404(Chore, pk=pk)
+
+    if not CompletionRecord.objects.filter(chore=chore).exists():
+        CompletionRecord.objects.create(
+            chore=chore, completed_by=member, completed_at=timezone.now()
+        )
+
+    return redirect(POST_COMPLETE_REDIRECT_URL_NAME)
 
 
 def _group_chores_by_due_date(chores):
