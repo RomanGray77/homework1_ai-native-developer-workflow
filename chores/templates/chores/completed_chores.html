@@ -22,6 +22,11 @@
                     <span class="owner-label">Owner: {{ record.chore.owner.name }}</span>
                     <span class="completed-by-label">Completed by: {{ record.completed_by.name }}</span>
                     <span class="completed-at-label">at {{ record.completed_at }}</span>
+                    <a href="{% url 'edit_completion_record' record.pk %}">Edit</a>
+                    <form method="post" action="{% url 'delete_completion_record' record.pk %}" class="delete-form">
+                        {% csrf_token %}
+                        <button type="submit">Delete</button>
+                    </form>
                 </li>
             {% endfor %}
         </ul>

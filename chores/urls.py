@@ -12,4 +12,14 @@ urlpatterns = [
     path("chores/", views.personal_chores, name="personal_chores"),
     path("family/", views.family_overview, name="family_overview"),
     path("chores/completed/", views.completed_chores, name="completed_chores"),
+    path(
+        "completion/<int:pk>/edit/",
+        views.edit_completion_record,
+        name="edit_completion_record",
+    ),
+    path(
+        "completion/<int:pk>/delete/",
+        views.delete_completion_record,
+        name="delete_completion_record",
+    ),
 ]

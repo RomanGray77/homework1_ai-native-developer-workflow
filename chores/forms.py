@@ -133,3 +133,32 @@ class EditChoreForm(forms.Form):
         self.chore.recurrence = self.cleaned_data.get("recurrence") or None
         self.chore.save()
         return self.chore
+
+
+class EditCompletionRecordForm(forms.Form):
+    """Form backing the edit-completion-record view (#16).
+
+    Mirrors EditChoreForm's pattern above: the CompletionRecord instance
+    being edited is passed in via `__init__` (as `record`, kept on
+    `self.record`) rather than being looked up again in the form. There is
+    deliberately no `chore` field on this form at all - #16 requires that a
+    record's `chore` FK can never be reassigned through this view, only
+    `completed_by`/`completed_at` are editable here.
+    """
+
+    completed_by = forms.ModelChoiceField(queryset=FamilyMember.objects.none())
+    completed_at = forms.DateTimeField()
+
+    def __init__(self, *args, record=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.record = record
+        # Populated per-instantiation (not as a class-level default) so newly
+        # created FamilyMember rows are picked up on every request.
+        self.fields["completed_by"].queryset = FamilyMember.objects.order_by("name")
+
+    def save(self):
+        """Update and return the CompletionRecord. Only call after is_valid()."""
+        self.record.completed_by = self.cleaned_data["completed_by"]
+        self.record.completed_at = self.cleaned_data["completed_at"]
+        self.record.save(update_fields=["completed_by", "completed_at"])
+        return self.record

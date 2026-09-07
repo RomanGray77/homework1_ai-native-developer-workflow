@@ -5,9 +5,13 @@ must render identically whether family_member_id is absent, malformed,
 stale, or a valid selection (admin or not). Every CompletionRecord field
 shown (chore title, chore's current owner, completed_by, completed_at) is
 direct FK access - no schema or extra-query changes. Ordered by
-completed_at descending with a pk-descending tiebreak. Read-only: no
-edit/delete controls. Also confirms none of the existing
-POST_*_REDIRECT_URL_NAME constants were repointed here.
+completed_at descending with a pk-descending tiebreak. Also confirms none
+of the existing POST_*_REDIRECT_URL_NAME constants were repointed here.
+
+Per-record edit/delete controls (chores.views.edit_completion_record and
+delete_completion_record) were added by #16 - see
+tests/test_edit_completion_record.py and
+tests/test_delete_completion_record.py for their own view-level coverage.
 """
 
 import datetime
@@ -184,17 +188,19 @@ def test_admin_selected_member_can_access(client):
 
 
 @pytest.mark.django_db
-def test_no_edit_or_delete_controls_in_template(client):
+def test_edit_and_delete_controls_in_template(client):
+    # #16 added per-record correction controls, superseding #14's original
+    # read-only rendering (this test used to assert the opposite).
     member = FamilyMember.objects.create(name="Dana", is_admin=False)
     chore = _make_chore(member, title="Dishes")
-    CompletionRecord.objects.create(chore=chore, completed_by=member)
+    record = CompletionRecord.objects.create(chore=chore, completed_by=member)
 
     response = client.get(reverse("completed_chores"))
-    content = response.content.decode().lower()
+    content = response.content.decode()
 
-    assert "<form" not in content
-    assert "edit" not in content
-    assert "delete" not in content
+    assert reverse("edit_completion_record", args=[record.pk]) in content
+    assert reverse("delete_completion_record", args=[record.pk]) in content
+    assert "<form" in content
 
 
 @pytest.mark.django_db

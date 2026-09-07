@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from .decorators import FAMILY_MEMBER_SESSION_KEY, admin_required
-from .forms import CreateChoreForm, EditChoreForm
+from .forms import CreateChoreForm, EditChoreForm, EditCompletionRecordForm
 from .models import Chore, CompletionRecord, FamilyMember
 
 # The personal chore view (#11) now exists, so a successful selection lands
@@ -29,6 +29,12 @@ POST_DEACTIVATE_REDIRECT_URL_NAME = "personal_chores"
 # completes someone else's chore would never see that chore in their own
 # personal view, so personal_chores would not visibly confirm anything (#13).
 POST_COMPLETE_REDIRECT_URL_NAME = "family_overview"
+
+# The completed_chores view (#14) is the natural home for both completion-
+# record corrections below - it's the only place completed records are
+# listed at all.
+POST_EDIT_COMPLETION_REDIRECT_URL_NAME = "completed_chores"
+POST_DELETE_COMPLETION_REDIRECT_URL_NAME = "completed_chores"
 
 
 def health(request):
@@ -404,3 +410,70 @@ def completed_chores(request):
             "has_completed_chores": records.exists(),
         },
     )
+
+
+@admin_required
+def edit_completion_record(request, pk):
+    """Let an admin correct a CompletionRecord's completed_by/completed_at (#16).
+
+    Gated by admin_required (#6), same shape as edit_chore (#9): GET+POST,
+    not POST-only. EditCompletionRecordForm has no `chore` field at all, so
+    the record's `chore` FK is fixed and never reassigned here. A valid POST
+    updates only `completed_by`/`completed_at` on this CompletionRecord and
+    redirects to POST_EDIT_COMPLETION_REDIRECT_URL_NAME (completed_chores,
+    #14). An invalid POST re-renders the same template with the bound form
+    and its errors, same as edit_chore. This view never touches
+    `Chore.is_active` or any other Chore field, and never calls
+    _generate_next_occurrence (#15) directly - that helper is only ever
+    invoked from complete_chore's first-completion branch, so nothing here
+    can re-trigger it. A nonexistent pk is a 404 via get_object_or_404, for
+    both GET and POST.
+    """
+    record = get_object_or_404(CompletionRecord, pk=pk)
+
+    if request.method == "POST":
+        form = EditCompletionRecordForm(request.POST, record=record)
+        if form.is_valid():
+            form.save()
+            return redirect(POST_EDIT_COMPLETION_REDIRECT_URL_NAME)
+    else:
+        form = EditCompletionRecordForm(
+            record=record,
+            initial={
+                "completed_by": record.completed_by_id,
+                "completed_at": record.completed_at,
+            },
+        )
+
+    return render(
+        request,
+        "chores/edit_completion_record.html",
+        {"form": form, "record": record},
+    )
+
+
+@admin_required
+@require_POST
+def delete_completion_record(request, pk):
+    """Let an admin delete a CompletionRecord outright (#16).
+
+    Decorator order mirrors deactivate_chore (#10): admin_required runs
+    first, so a missing/non-admin session gets its usual redirect/403
+    treatment regardless of request method; require_POST then turns a GET
+    from a valid admin session into a 405. A nonexistent pk is a 404 via
+    get_object_or_404.
+
+    Deleting the record is the whole implementation - no special-casing for
+    one-time vs. recurring chores is needed. #11/#12 define "open" as
+    active + no CompletionRecord, so once this row's only CompletionRecord
+    is gone, that Chore (a one-time chore, or one occurrence row of a
+    recurring chore) naturally reappears as open again. For a recurring
+    chore, only this occurrence row's record is touched - the already
+    -generated next occurrence (#15) and its own (still-absent)
+    CompletionRecord are left alone, so both rows may be open at once.
+    Redirects to POST_DELETE_COMPLETION_REDIRECT_URL_NAME (completed_chores,
+    #14).
+    """
+    record = get_object_or_404(CompletionRecord, pk=pk)
+    record.delete()
+    return redirect(POST_DELETE_COMPLETION_REDIRECT_URL_NAME)
